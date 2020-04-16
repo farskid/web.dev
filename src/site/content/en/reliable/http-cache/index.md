@@ -1,8 +1,9 @@
 ---
 layout: post
-title: 'The HTTP cache: your first line of defense'
+title: 'The HTTP Cache: A widely supported technique for avoiding unnecessary network requests'
 authors:
   - jeffposnick
+  - ilyagrigorik
 date: 2018-11-05
 description: |
   The browser's HTTP cache is your first line of defense. It's not necessarily
@@ -14,13 +15,35 @@ codelabs:
   - codelab-http-cache
 ---
 
+Fetching resources over the network is both slow and expensive: 
+
+* Large responses require many roundtrips between the browser and the server.
+* Your page won't load until all of its [critical resources][crp] have downloaded completely.
+* If a person is accessing your site with a limited data plan, every unnecessary 
+  network request is a waste of their money.
+
 How can you avoid unnecessary network requests?
 
 The browser's HTTP cache is your first line of defense. It's not necessarily the
 most powerful or flexible approach, and you have limited control over the
-lifetime of cached responses. But there are several rules of thumb that give you
-a sensible caching implementation without much work, so you should always try to
-follow them.
+lifetime of cached responses, but it's effective, it's supported in all
+browsers, and it doesn't require much work.
+
+This guide shows you how to create an effective HTTP caching implementation.
+
+## Browser compatibility {: #browser-compatibility }
+
+The collection of web platform APIs that are collectively known as the HTTP Cache
+are supported in all browsers:
+
+* [`Cache-Control`](https://developer.mozilla.org/docs/Web/HTTP/Headers/Cache-Control#Browser_compatibility)
+
+## How the HTTP cache works
+
+All HTTP requests that the browser makes are first routed to the browser cache
+to check whether there is a valid cached response that can be used to fulfill
+the request. If there's a match, the response is read from the cache, which
+eliminates both the network latency and the data costs that the transfer incurs.
 
 The HTTP cache's behavior is controlled by a combination of
 [request](https://developer.mozilla.org/en-US/docs/Glossary/Request_header) and
@@ -63,6 +86,15 @@ your web server adds to each outgoing response. A combination of the
 [`ETag`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag), and
 [`Last-Modified`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Last-Modified)
 headers all factor into effective caching behavior.
+
+From a performance optimization perspective, the best request is a request that
+doesn't need to communicate with the server: a local copy of the response allows
+you to eliminate all network latency and avoid data charges for the data
+transfer. To achieve this, the HTTP specification allows the server to return
+Cache-Control directives that control how, and for how long, the browser and
+other intermediate caches can cache the individual response.
+
+TODO Self-Assessment for item 9
 
 Some web servers have built-in support for setting those headers by default,
 while others leave the headers out entirely unless you explicitly configure
@@ -118,6 +150,26 @@ ignored](https://www.keycdn.com/blog/cache-control-immutable#browser-support) in
 some browsers.
 {% endAside %}
 
+#### Why versioned URLs are a good practice
+
+However, what if you want to update or invalidate a cached response? For
+example, suppose you've told your visitors to cache a CSS stylesheet for up to
+24 hours (max-age=86400), but your designer has just committed an update that
+you'd like to make available to all users. How do you notify all the visitors
+who have what is now a "stale" cached copy of your CSS to update their caches?
+You can't, at least not without changing the URL of the resource. After the
+browser caches the response, the cached version is used until it's no longer
+fresh, as determined by max-age or expires, or until it is evicted from cache
+for some other reason— for example, the user clearing their browser cache. As a
+result, different users might end up using different versions of the file when
+the page is constructed: users who just fetched the resource use the new
+version, while users who cached an earlier (but still valid) copy use an older
+version of its response. How do you get the best of both worlds: client-side
+caching and quick updates? You change the URL of the resource and force the user
+to download the new response whenever its content changes. Typically, you do
+this by embedding a fingerprint of the file, or a version number, in its
+filename—for example, style.x234dff.css.
+
 ### Server revalidation for unversioned URLs
 
 Unfortunately, not all of the URLs you load are versioned. Maybe you're not able
@@ -137,10 +189,22 @@ First off, make sure you add `Cache-Control: no-cache` to your response
 messages. This explicitly tells the browser that you've surrendered, and that
 going to the network to check if there's been an update is necessary.
 
+By contrast, "no-store" is much simpler. It simply disallows the browser and all
+intermediate caches from storing any version of the returned response—for
+example, one containing private personal or banking data. Every time the user
+requests this asset, a request is sent to the server and a full response is
+downloaded.
+
+By contrast, the browser can cache "private" responses. However, these responses
+are typically intended for a single user, so an intermediate cache is not
+allowed to cache them. For example, a user's browser can cache an HTML page with
+private user information, but a CDN can't cache the page.
+
 Along with that, setting one of two additional response headers is recommended:
 either
 [`Last-Modified`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Last-Modified)
 or [`ETag`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag).
+
 ETags are identifiers for specified resources. They allow caches to be more
 efficient and are useful to help prevent simultaneous updates from overwriting
 each other.  By setting one or the other of those headers, you'll end up making
@@ -149,6 +213,20 @@ the revalidation request much more efficient. They end up triggering the
 or
 [`If-None-Match`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-None-Match)
 request headers that we mentioned earlier.
+
+Assume that 120 seconds have passed since the initial fetch and the browser has
+initiated a new request for the same resource. First, the browser checks the
+local cache and finds the previous response. Unfortunately, the browser can't
+use the previous response because the response has now expired. At this point,
+the browser could dispatch a new request and fetch the new full response.
+However, that’s inefficient because if the resource hasn't changed, then there's
+no reason to download the same information that's already in cache! That’s the
+problem that validation tokens, as specified in the ETag header, are designed to
+solve. The server generates and returns an arbitrary token, which is typically a
+hash or some other fingerprint of the contents of the file. The client doesn't
+need to know how the fingerprint is generated; it only needs to send it to the
+server on the next request. If the fingerprint is still the same, then the
+resource hasn't changed and you can skip the download.
 
 When a properly configured web server sees those incoming request headers, it
 can confirm whether the version of the resource that the browser already has in
@@ -180,3 +258,11 @@ gotchas](https://jakearchibald.com/2016/caching-best-practices/).
 
 For most developers, though, either `Cache-Control: no-cache` or `Cache-Control:
 max-age=31536000` should be fine.
+
+## Caching strategy checklist 
+
+## Caching strategy flowchart 
+
+![Flowchart](flowchart.png)
+
+[crp]: https://developers.google.com/web/fundamentals/performance/critical-rendering-path
