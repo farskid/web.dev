@@ -59,7 +59,6 @@ module.exports = () => {
             'src',
             'site',
             'content',
-            'en',
             'images',
             'authors',
             `${author.key}${size}.jpg`,
