@@ -1,10 +1,11 @@
 ---
 layout: post
-title: 'The HTTP Cache: A widely supported technique for avoiding unnecessary network requests'
+title: 'The HTTP Cache: Your first defense for avoiding unnecessary network requests'
 authors:
   - jeffposnick
   - ilyagrigorik
 date: 2018-11-05
+updated: 2020-04-16
 description: |
   The browser's HTTP Cache is your first line of defense. It's not necessarily
   the most powerful or flexible approach, and you have limited control over the
@@ -22,7 +23,7 @@ Fetching resources over the network is both slow and expensive:
 * If a person is accessing your site with a limited data plan, every unnecessary 
   network request is a waste of their money.
 
-How can you avoid unnecessary network requests?The browser's HTTP Cache is your
+How can you avoid unnecessary network requests? The browser's HTTP Cache is your
 first line of defense. It's not necessarily the most powerful or flexible
 approach, and you have limited control over the lifetime of cached responses,
 but it's effective, it's supported in all browsers, and it doesn't require much
@@ -87,12 +88,12 @@ into effective caching behavior:
   The server can return a `Cache-Control` directive to specify how, and for how
   long, the browser and other intermediate caches should cache the individual
   response.
-* [`ETag`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag). When
+* [`ETag`][ETag]. When
   the browser finds an expired cached response, it can send a small token 
   (usually a hash of the file's contents) to the server to check if the file has
   changed. If the server returns the same token, then file is the same, and there's
   no need to re-download it.
-* [`Last-Modified`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Last-Modified).
+* [`Last-Modified`][Last-Modified].
   This header serves the same purpose as `ETag`, but is less accurate.
 
 Some web servers have built-in support for setting those headers by default,
@@ -200,29 +201,11 @@ are cached:
   For example, `private` would make sense for server-side rendered HTML file
   that contains private user information.
 
-Along with that, setting one of two additional response headers is recommended:
-
-* [`ETag`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag). When
-  the browser finds an expired cached response, it can send a small token 
-  (usually a hash of the file's contents) to the server to check if the file has
-  changed. If the server returns the same token, then file is the same, and there's
-  no need to re-download it.
-* [`Last-Modified`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Last-Modified).
-  This header serves the same purpose as `ETag`, but is less accurate.
-
-
-either
-[`Last-Modified`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Last-Modified)
-or [`ETag`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag).
-
-ETags are identifiers for specified resources. They allow caches to be more
-efficient and are useful to help prevent simultaneous updates from overwriting
-each other.  By setting one or the other of those headers, you'll end up making
-the revalidation request much more efficient. They end up triggering the
-[`If-Modified-Since`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-Modified-Since)
-or
-[`If-None-Match`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/If-None-Match)
-request headers that we mentioned earlier.
+Along with that, setting one of two additional response headers can also help:
+either [`ETag`][ETag] or [`Last-Modified`][Last-Modified]. As mentioned in
+[Response headers](#response-headers), `ETag` and `Last-Modified` both serve the
+same purpose: determining if the browser needs to re-download a cached file
+that has expired. `ETag` is the recommended approach because it's more accurate.
 
 {% Details %}
   {% DetailsSummary 'h4' %}
@@ -244,10 +227,15 @@ request headers that we mentioned earlier.
   download. 
 {% endDetails %}
 
+By setting `ETag` or `Last-Modified`, you'll end up making the
+revalidation request much more efficient. They end up triggering the
+[`If-Modified-Since`][If-Modified-Since] or [`If-None-Match`][If-None-Match]
+request headers that were mentioned in [Request headers](#request-headers).
+
 When a properly configured web server sees those incoming request headers, it
 can confirm whether the version of the resource that the browser already has in
 its HTTP Cache matches the latest version on the web server. If there's a match,
-then the server can respond with an [`304 Not Modified`][304] HTTP response,
+then the server can respond with a [`304 Not Modified`][304] HTTP response,
 which is the equivalent of "Hey, keep using what you've already got!" There's
 very little data to transfer when sending this type of response, so it's usually
 much faster than having to actually send back a copy of the actual resource
@@ -256,27 +244,50 @@ being requested.
 <figure class="w-figure">
   <img src="./http-cache.png" alt="A diagram of a client requesting a resource and the server responding with a 304 header.">
   <figcaption class="w-figcaption w-text--left">
-    A request/response flow. The server uses a 304 Not Modifier header
-    to tell the client to use its cached version of a resource.
+    The browser requests <code>/file</code> from the server and includes the <code>If-None-Match</code>
+    header to instruct the server to only return the full file if the <code>ETag</code> of
+    the file on the server doesn't match the browser's <code>If-None-Match</code> value. In this
+    case, the 2 values did match, so the browser returns a <code>304 Not Modified</code> response
+    with instructions on how much longer the file should be cached (<code>Cache-Control: max-age=120</code>).
   </figcaption>
 </figure>
 
+## Summary {: #summary }
+
+The HTTP Cache is an effective way to improve load performance because
+it reduces unnecessary network requests. It's supported in all browsers and doesn't
+take too much work to set up.
+
+The following `Cache-Control` configurations are a good start:
+
+* `Cache-Control: no-cache` for resources that should be revalidated with the server before every use
+* `Cache-Control: no-store` for resources that should never be cached
+* `Cache-Control: max-age=31536000` for versioned resources
+
+And the `ETag` or `Last-Modified` header can help you revalidate expired cache resources more efficiently.
+
 {% Aside 'codelab' %}
-  [Control resource caching behavior using HTTP headers](/codelab-http-cache).
+  [Configure HTTP caching behavior](/codelab-http-cache).
 {% endAside %}
 
-## Dig deeper {: #learn-more }
+## Learn more {: #learn-more }
 
 If you're looking to go beyond the basics of using the `Cache-Control` header,
-the best guide out there is Jake Archibald's [Caching best practices & max-age
+check out Jake Archibald's [Caching best practices & max-age
 gotchas](https://jakearchibald.com/2016/caching-best-practices/).
 
-For most developers, though, either `Cache-Control: no-cache` or `Cache-Control:
-max-age=31536000` should be fine.
+## Appendix: More tips {: #tips }
 
-## Caching strategy checklist {: #checklist }
+If you have more time, here are further ways that you can optimize your usage of the HTTP Cache:
 
-## Caching strategy flowchart {: #flowchart }
+* Use consistent URLs. If you serve the same content on different URLs, then
+  that content will be fetched and stored multiple times.
+* Minimize churn. If part of a resource (such as a CSS file) updates frequently, whereas the
+  rest of the file does not (such as library code), consider splitting the frequently updating
+  code into a separate file and using a short duration caching strategy for the frequently
+  updating code and a long caching duration strategy for the code that doesn't change often.
+
+## Appendix: `Cache-Control` flowchart {: #flowchart }
 
 ![Flowchart](flowchart.png)
 
@@ -284,3 +295,5 @@ max-age=31536000` should be fine.
 [304]: https://developer.mozilla.org/docs/Web/HTTP/Status/304
 [If-Modified-Since]: https://developer.mozilla.org/docs/Web/HTTP/Headers/If-Modified-Since
 [If-None-Match]: https://developer.mozilla.org/docs/Web/HTTP/Headers/If-None-Match
+[ETag]: https://developer.mozilla.org/docs/Web/HTTP/Headers/ETag
+[Last-Modified]: https://developer.mozilla.org/docs/Web/HTTP/Headers/Last-Modified
